@@ -1,9 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import multer from "multer";
 import { Pool } from "pg";
 import cors from "cors";
-import path from "path";
-import fs from "fs";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 // ====================== CẤU HÌNH CƠ BẢN ======================
 const app = express();
@@ -13,9 +16,6 @@ app.use(cors());
 app.use(express.json());
 
 // ====================== CẤU HÌNH KẾT NỐI POSTGRESQL ======================
-// 🔹 Khi deploy Render: dùng DATABASE_URL + SSL
-// 🔹 Khi chạy local: điền trực tiếp user, host, password, db, port, ssl: false
-
 const isRender = !!process.env.DATABASE_URL;
 
 const pool = new Pool(
@@ -25,33 +25,37 @@ const pool = new Pool(
         ssl: { rejectUnauthorized: false },
       }
     : {
-        user: "postgres",       // ⚠️ đổi nếu username khác
-        host: "localhost",      // hoặc 127.0.0.1
-        database: "postgres",   // ⚠️ đổi thành DB bạn đang dùng
-        password: "kIMPHU@290105.",       // ⚠️ mật khẩu PostgreSQL
+        user: "postgres",
+        host: "localhost",
+        database: "postgres",
+        password: "kIMPHU@290105.",
         port: 5432,
         ssl: false,
       }
 );
 
-// ====================== CẤU HÌNH LƯU FILE UPLOAD ======================
-const uploadDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+// ====================== CẤU HÌNH CLOUDINARY ======================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "YOUR_CLOUD_NAME",
+  api_key: process.env.CLOUDINARY_API_KEY || "YOUR_API_KEY",
+  api_secret: process.env.CLOUDINARY_API_SECRET || "YOUR_API_SECRET",
+});
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + "-" + file.originalname);
+// ====================== CẤU HÌNH MULTER STORAGE (CLOUDINARY) ======================
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "submissions", // Tên folder trong Cloudinary
+    resource_type: "auto", // Cho phép pdf, zip, ảnh, ...
   },
 });
 const upload = multer({ storage });
 
 // ====================== ROUTES ======================
 
-// Test route để kiểm tra server hoạt động
+// Test route
 app.get("/", (req, res) => {
-  res.send("✅ Backend đang chạy ổn định 🚀");
+  res.send("✅ Backend đang chạy ổn định với Cloudinary 🚀");
 });
 
 // ==== API POST /submit ====
@@ -60,18 +64,25 @@ app.post("/submit", upload.single("file"), async (req, res) => {
     const { student_id, student_name, week_number, note } = req.body;
 
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "Thiếu file upload!" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu file upload!" });
     }
 
-    const file_path = "/uploads/" + req.file.filename;
+    // Đường dẫn file trên Cloudinary
+    const file_url = req.file.path;
 
     await pool.query(
       `INSERT INTO submissions (student_id, student_name, week_number, file_path, note)
        VALUES ($1, $2, $3, $4, $5)`,
-      [student_id, student_name, week_number, file_path, note]
+      [student_id, student_name, week_number, file_url, note]
     );
 
-    res.json({ success: true, message: "✅ Nộp bài thành công!" });
+    res.json({
+      success: true,
+      message: "✅ Nộp bài thành công (đã lưu lên Cloudinary)!",
+      file_url,
+    });
   } catch (err) {
     console.error("❌ Lỗi khi nộp bài:", err);
     res.status(500).json({ success: false, message: "Lỗi khi nộp bài" });
@@ -97,13 +108,12 @@ app.get("/submissions", async (req, res) => {
     query += " ORDER BY submitted_at DESC";
 
     const result = await pool.query(query, params);
-
-    // ✅ THAY ĐỔI Ở ĐÂY
     res.json({ success: true, submissions: result.rows });
-
   } catch (err) {
     console.error("❌ Lỗi khi lấy dữ liệu:", err);
-    res.status(500).json({ success: false, message: "Lỗi khi lấy dữ liệu" });
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi khi lấy dữ liệu submissions" });
   }
 });
 
