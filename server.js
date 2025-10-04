@@ -97,7 +97,10 @@ app.get("/submissions", async (req, res) => {
     query += " ORDER BY submitted_at DESC";
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+
+    // ✅ THAY ĐỔI Ở ĐÂY
+    res.json({ success: true, submissions: result.rows });
+
   } catch (err) {
     console.error("❌ Lỗi khi lấy dữ liệu:", err);
     res.status(500).json({ success: false, message: "Lỗi khi lấy dữ liệu" });
