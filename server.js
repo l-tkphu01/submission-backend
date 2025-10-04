@@ -61,7 +61,7 @@ app.get("/", (req, res) => {
 // ==== API POST /submit ====
 app.post("/submit", upload.single("file"), async (req, res) => {
   try {
-    const { student_id, student_name, week_number, note } = req.body;
+    const { student_id, student_name, week_number, note, project_link } = req.body;
 
     if (!req.file) {
       return res
@@ -73,10 +73,11 @@ app.post("/submit", upload.single("file"), async (req, res) => {
     const file_url = req.file.path;
 
     await pool.query(
-      `INSERT INTO submissions (student_id, student_name, week_number, file_path, note)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [student_id, student_name, week_number, file_url, note]
+      `INSERT INTO submissions (student_id, student_name, week_number, file_path, note, project_link)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [student_id, student_name, week_number, file_url, note, project_link]
     );
+
 
     res.json({
       success: true,
