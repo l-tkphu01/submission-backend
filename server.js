@@ -55,7 +55,7 @@ const upload = multer({ storage });
 
 // Test route
 app.get("/", (req, res) => {
-  res.send("✅ Backend đang chạy ổn định với Cloudinary 🚀");
+  res.send("✅ Backend đang chạy ổn định với Cloudinary & PostgreSQL 🚀");
 });
 
 // ==== API POST /submit ====
@@ -83,17 +83,25 @@ app.post("/submit", upload.single("file"), async (req, res) => {
          WHERE student_id = $4 AND week_number = $5 AND exercise_name = $6`,
         [filePath, project_link, note, student_id, week_number, exercise_name]
       );
-      return res.json({ success: true, message: "📝 Đã cập nhật bài nộp cũ!" });
+      return res.json({
+        success: true,
+        message: "📝 Đã cập nhật bài nộp cũ!",
+        filePath: filePath // ✅ thêm dòng này
+      });
     }
 
     // ✅ Thêm bài mới
     await pool.query(
-      `INSERT INTO submissions (student_id, student_name, week_number, exercise_name, note, project_link, file_path)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO submissions (student_id, student_name, week_number, exercise_name, note, project_link, file_path, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
       [student_id, student_name, week_number, exercise_name, note, project_link, filePath]
     );
 
-    res.json({ success: true, message: "✅ Đã nộp bài mới!" });
+    res.json({
+      success: true,
+      message: "✅ Đã nộp bài mới!",
+      filePath: filePath // ✅ thêm dòng này
+    });
   } catch (err) {
     console.error("❌ Lỗi khi nộp:", err);
     res.status(500).json({ success: false, message: "Lỗi server khi nộp bài" });
