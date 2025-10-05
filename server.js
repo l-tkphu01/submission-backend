@@ -59,38 +59,47 @@ app.get("/", (req, res) => {
 });
 
 // ==== API POST /submit ====
+// ==== API POST /submit ====
 app.post("/submit", upload.single("file"), async (req, res) => {
   const { student_id, student_name, week_number, note, project_link, exercise_name } = req.body;
-  const filePath = req.file ? `/uploads/${req.file.filename}` : null;
+  const filePath = req.file ? req.file.path : null; // ✅ Cloudinary URL chuẩn
 
   try {
+    // Kiểm tra xem bài này đã tồn tại chưa
     const existing = await pool.query(
       `SELECT * FROM submissions
-       WHERE student_id=$1 AND week_number=$2 AND exercise_name=$3`,
+       WHERE student_id = $1 AND week_number = $2 AND exercise_name = $3`,
       [student_id, week_number, exercise_name]
     );
 
     if (existing.rows.length > 0) {
+      // ✅ Cập nhật bài cũ
       await pool.query(
         `UPDATE submissions
-         SET file_path=$1, project_link=$2, note=$3, created_at=NOW()
-         WHERE student_id=$4 AND week_number=$5 AND exercise_name=$6`,
+         SET file_path = $1,
+             project_link = $2,
+             note = $3,
+             submitted_at = NOW()
+         WHERE student_id = $4 AND week_number = $5 AND exercise_name = $6`,
         [filePath, project_link, note, student_id, week_number, exercise_name]
       );
-      res.json({ success: true, message: "Đã cập nhật bài nộp cũ!" });
-    } else {
-      await pool.query(
-        `INSERT INTO submissions (student_id, student_name, week_number, exercise_name, note, project_link, file_path)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [student_id, student_name, week_number, exercise_name, note, project_link, filePath]
-      );
-      res.json({ success: true, message: "Đã nộp bài mới!" });
+      return res.json({ success: true, message: "📝 Đã cập nhật bài nộp cũ!" });
     }
+
+    // ✅ Thêm bài mới
+    await pool.query(
+      `INSERT INTO submissions (student_id, student_name, week_number, exercise_name, note, project_link, file_path)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [student_id, student_name, week_number, exercise_name, note, project_link, filePath]
+    );
+
+    res.json({ success: true, message: "✅ Đã nộp bài mới!" });
   } catch (err) {
-    console.error("Lỗi khi nộp:", err);
-    res.status(500).json({ success: false, message: "Lỗi server" });
+    console.error("❌ Lỗi khi nộp:", err);
+    res.status(500).json({ success: false, message: "Lỗi server khi nộp bài" });
   }
 });
+
 
 // ==== API GET /submissions ====
 app.get("/submissions", async (req, res) => {
@@ -108,37 +117,37 @@ app.get("/submissions", async (req, res) => {
       query += ` AND week_number = $${params.length}`;
     }
 
-    query += " ORDER BY submitted_at DESC";
+    query += " ORDER BY submitted_at DESC"; // ✅ đúng tên cột trong DB
 
     const result = await pool.query(query, params);
     res.json({ success: true, submissions: result.rows });
   } catch (err) {
     console.error("❌ Lỗi khi lấy dữ liệu:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi khi lấy dữ liệu submissions" });
+    res.status(500).json({ success: false, message: "Lỗi khi lấy dữ liệu submissions" });
   }
 });
 
 // ==== API DELETE /submission/:student_id/:week_number ====
 // ==== DELETE /submission/:student_id/:week_number/:exercise_name ====
+// ✅ API xoá từng bài cụ thể (theo exercise_name)
 app.delete("/submission/:student_id/:week_number/:exercise_name", async (req, res) => {
   const { student_id, week_number, exercise_name } = req.params;
-
   try {
     const result = await pool.query(
-      `DELETE FROM submissions WHERE student_id = $1 AND week_number = $2 AND exercise_name = $3 RETURNING *`,
+      `DELETE FROM submissions
+       WHERE student_id = $1 AND week_number = $2 AND exercise_name = $3
+       RETURNING *`,
       [student_id, week_number, exercise_name]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài để xoá!" });
+      return res.status(404).json({ success: false, message: "❌ Không tìm thấy bài nộp để xoá!" });
     }
 
-    res.json({ success: true, message: `🗑️ Đã xoá "${exercise_name}" trong tuần ${week_number}` });
+    res.json({ success: true, message: `🗑️ Đã xoá bài "${exercise_name}" thành công!` });
   } catch (err) {
     console.error("❌ Lỗi khi xoá bài cụ thể:", err);
-    res.status(500).json({ success: false, message: "Lỗi khi xoá bài" });
+    res.status(500).json({ success: false, message: "Lỗi khi xoá bài cụ thể" });
   }
 });
 
