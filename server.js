@@ -60,33 +60,35 @@ app.get("/", (req, res) => {
 
 // ==== API POST /submit ====
 app.post("/submit", upload.single("file"), async (req, res) => {
+  const { student_id, student_name, week_number, note, project_link, exercise_name } = req.body;
+  const filePath = req.file ? `/uploads/${req.file.filename}` : null;
+
   try {
-    const { student_id, student_name, week_number, note, project_link } = req.body;
-
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Thiếu file upload!" });
-    }
-
-    // Đường dẫn file trên Cloudinary
-    const file_url = req.file.path;
-
-    await pool.query(
-      `INSERT INTO submissions (student_id, student_name, week_number, file_path, note, project_link)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [student_id, student_name, week_number, file_url, note, project_link]
+    const existing = await pool.query(
+      `SELECT * FROM submissions
+       WHERE student_id=$1 AND week_number=$2 AND exercise_name=$3`,
+      [student_id, week_number, exercise_name]
     );
 
-
-    res.json({
-      success: true,
-      message: "✅ Nộp bài thành công (đã lưu lên Cloudinary)!",
-      file_url,
-    });
+    if (existing.rows.length > 0) {
+      await pool.query(
+        `UPDATE submissions
+         SET file_path=$1, project_link=$2, note=$3, created_at=NOW()
+         WHERE student_id=$4 AND week_number=$5 AND exercise_name=$6`,
+        [filePath, project_link, note, student_id, week_number, exercise_name]
+      );
+      res.json({ success: true, message: "Đã cập nhật bài nộp cũ!" });
+    } else {
+      await pool.query(
+        `INSERT INTO submissions (student_id, student_name, week_number, exercise_name, note, project_link, file_path)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [student_id, student_name, week_number, exercise_name, note, project_link, filePath]
+      );
+      res.json({ success: true, message: "Đã nộp bài mới!" });
+    }
   } catch (err) {
-    console.error("❌ Lỗi khi nộp bài:", err);
-    res.status(500).json({ success: false, message: "Lỗi khi nộp bài" });
+    console.error("Lỗi khi nộp:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 });
 
@@ -119,22 +121,24 @@ app.get("/submissions", async (req, res) => {
 });
 
 // ==== API DELETE /submission/:student_id/:week_number ====
-app.delete("/submission/:student_id/:week_number", async (req, res) => {
-  const { student_id, week_number } = req.params;
+// ==== DELETE /submission/:student_id/:week_number/:exercise_name ====
+app.delete("/submission/:student_id/:week_number/:exercise_name", async (req, res) => {
+  const { student_id, week_number, exercise_name } = req.params;
+
   try {
     const result = await pool.query(
-      `DELETE FROM submissions WHERE student_id = $1 AND week_number = $2 RETURNING *`,
-      [student_id, week_number]
+      `DELETE FROM submissions WHERE student_id = $1 AND week_number = $2 AND exercise_name = $3 RETURNING *`,
+      [student_id, week_number, exercise_name]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài nộp để xoá!" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài để xoá!" });
     }
 
-    res.json({ success: true, message: "🗑️ Huỷ bài nộp thành công!" });
+    res.json({ success: true, message: `🗑️ Đã xoá "${exercise_name}" trong tuần ${week_number}` });
   } catch (err) {
-    console.error("❌ Lỗi khi huỷ bài nộp:", err);
-    res.status(500).json({ success: false, message: "Lỗi khi huỷ bài nộp" });
+    console.error("❌ Lỗi khi xoá bài cụ thể:", err);
+    res.status(500).json({ success: false, message: "Lỗi khi xoá bài" });
   }
 });
 
