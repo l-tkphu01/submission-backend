@@ -118,6 +118,26 @@ app.get("/submissions", async (req, res) => {
   }
 });
 
+// ==== API DELETE /submission/:student_id/:week_number ====
+app.delete("/submission/:student_id/:week_number", async (req, res) => {
+  const { student_id, week_number } = req.params;
+  try {
+    const result = await pool.query(
+      `DELETE FROM submissions WHERE student_id = $1 AND week_number = $2 RETURNING *`,
+      [student_id, week_number]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài nộp để xoá!" });
+    }
+
+    res.json({ success: true, message: "🗑️ Huỷ bài nộp thành công!" });
+  } catch (err) {
+    console.error("❌ Lỗi khi huỷ bài nộp:", err);
+    res.status(500).json({ success: false, message: "Lỗi khi huỷ bài nộp" });
+  }
+});
+
 // ====================== KHỞI CHẠY SERVER ======================
 app.listen(port, () => {
   console.log(`✅ Server đang chạy tại http://localhost:${port}`);
